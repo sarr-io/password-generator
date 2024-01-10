@@ -15,6 +15,10 @@ const SettingsError = error {
     AllOptionsDisabled
 };
 
+const TimeError = error {
+    InvalidMonthInt
+};
+
 pub fn createFile(path: []const u8) !bool {
     var file: std.fs.File = std.fs.cwd().createFile(path, .{ .exclusive = true }) catch |e| {
         switch (e) {
@@ -97,13 +101,97 @@ pub fn generatePassword(allocator: Allocator, generatorSettings: std.json.Parsed
     return password;
 }
 
-pub fn logPassword(password: []const u8) !void{
+fn getMonthEnum(int: u8) TimeError!std.time.epoch.Month {
+    switch (int) {
+        1 => return .jan,
+        2 => return .feb,
+        3 => return .mar,
+        4 => return .apr,
+        5 => return .may,
+        6 => return .jun,
+        7 => return .jul,
+        8 => return .aug,
+        9 => return .sep,
+        10 => return .oct,
+        11 => return .nov,
+        12 => return .dec,
+        else => return TimeError.InvalidMonthInt,
+    }
+}
+
+fn getMonthString(int: u8) TimeError![]const u8 {
+    switch (int) {
+        1 => return "jan",
+        2 => return "feb",
+        3 => return "mar",
+        4 => return "apr",
+        5 => return "may",
+        6 => return "jun",
+        7 => return "jul",
+        8 => return "aug",
+        9 => return "sep",
+        10 => return "oct",
+        11 => return "nov",
+        12 => return "dec",
+        else => return TimeError.InvalidMonthInt,
+    }
+}
+
+pub fn getCustomFormattedTime(allocator: Allocator, timeStamp: i64) ![]const u8{
+    const startYear: u16 = 1970;
+    var currentYearDelta: u16 = 0;
+
+    const startDay: u8 = 1;
+    var currentDayDelta: u8 = 0;
+
+    const startMonth: u8 = 1;
+    var currentMonthDelta: u8 = 0;
+
+    while (true) {
+        var isLeapYear: std.time.epoch.YearLeapKind = undefined;
+        if (std.time.epoch.isLeapYear(startYear+currentYearDelta)) {
+            isLeapYear = std.time.epoch.YearLeapKind.leap;
+        } else {
+            isLeapYear = std.time.epoch.YearLeapKind.not_leap;
+        }
+
+        const secondsInDay = 86400;
+        const secondsInMonth: u32 = @as(u32,std.time.epoch.getDaysInMonth(isLeapYear, try getMonthEnum(startMonth+currentMonthDelta)))*secondsInDay;
+        const secondsInYear: u32 = @as(u32,std.time.epoch.getDaysInYear(startYear+currentYearDelta))*secondsInDay;
+
+        if ((timeStamp-secondsInYear)>secondsInYear) {
+            currentYearDelta += 1;
+        } else if ((timeStamp-secondsInMonth)>secondsInMonth) {
+            currentMonthDelta += 1;
+        } else if ((timeStamp-secondsInDay)>secondsInDay) {
+            currentDayDelta += 1;
+        } else {
+            break;
+        }
+    }
+
+    const currentMonth: []const u8 = try getMonthString(startMonth+currentMonthDelta);
+    const currentDay: u8 = startDay+currentDayDelta;
+    const currentYear: u16 = startDay+currentDayDelta;
+
+    const formattedTime = try std.fmt.allocPrint(allocator, "{s} {d}, {d}", .{currentMonth, currentDay, currentYear});
+
+    return formattedTime;
+}
+
+pub fn logPassword(allocator: Allocator, password: []const u8) !void{
     _ = try createFile("log.txt");
 
-    // TODO: find a way to convert current time to string and include it in the log
-    
+    const timeStamp = std.time.timestamp();
+
+    const timeStampStr = try getCustomFormattedTime(allocator, timeStamp);
+    defer allocator.free(timeStampStr);
+
+    std.debug.print("{d}\n", .{timeStampStr});
+
     // TODO: change this to only append and not overwrite
-    // TODO: make a while loop that checks if file size too big, if so start deleting old lines to make space
+    // TODO: make a while loop that checks if file size will be too big, if so start deleting old lines to make space
+    //       (over around 1mb, this is a temporary backup log and should not be used as a password keeper)
     try std.fs.cwd().writeFile("log.txt", password);
 }
 
@@ -117,7 +205,7 @@ pub fn main() !void {
     const password: []const u8 = try generatePassword(allocator, generatorSettings);
     defer allocator.free(password);
 
-    try logPassword(password);
+    try logPassword(allocator, password);
     
     // TODO: copy password to clipboard
 
