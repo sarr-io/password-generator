@@ -1,5 +1,8 @@
 const std = @import("std");
 const fs = std.fs;
+
+const win32 = @import("zigwin32/win32.zig");
+
 const Allocator = std.mem.Allocator;
 
 const settings = struct { 
@@ -101,43 +104,9 @@ pub fn generatePassword(allocator: Allocator, generatorSettings: std.json.Parsed
     return password;
 }
 
-fn getMonthEnum(int: u8) TimeError!std.time.epoch.Month {
-    switch (int) {
-        1 => return .jan,
-        2 => return .feb,
-        3 => return .mar,
-        4 => return .apr,
-        5 => return .may,
-        6 => return .jun,
-        7 => return .jul,
-        8 => return .aug,
-        9 => return .sep,
-        10 => return .oct,
-        11 => return .nov,
-        12 => return .dec,
-        else => return TimeError.InvalidMonthInt,
-    }
-}
-
-fn getMonthString(int: u8) TimeError![]const u8 {
-    switch (int) {
-        1 => return "jan",
-        2 => return "feb",
-        3 => return "mar",
-        4 => return "apr",
-        5 => return "may",
-        6 => return "jun",
-        7 => return "jul",
-        8 => return "aug",
-        9 => return "sep",
-        10 => return "oct",
-        11 => return "nov",
-        12 => return "dec",
-        else => return TimeError.InvalidMonthInt,
-    }
-}
-
 pub fn getCustomFormattedTime(allocator: Allocator, timeStamp: i64) ![]const u8{
+    var mutableTimeStamp: i64 = timeStamp;
+
     const startYear: u16 = 1970;
     var currentYearDelta: u16 = 0;
 
@@ -156,25 +125,28 @@ pub fn getCustomFormattedTime(allocator: Allocator, timeStamp: i64) ![]const u8{
         }
 
         const secondsInDay = 86400;
-        const secondsInMonth: u32 = @as(u32,std.time.epoch.getDaysInMonth(isLeapYear, try getMonthEnum(startMonth+currentMonthDelta)))*secondsInDay;
+        const secondsInMonth: u32 = @as(u32,std.time.epoch.getDaysInMonth(isLeapYear, @enumFromInt(startMonth+currentMonthDelta)))*secondsInDay;
         const secondsInYear: u32 = @as(u32,std.time.epoch.getDaysInYear(startYear+currentYearDelta))*secondsInDay;
 
-        if ((timeStamp-secondsInYear)>secondsInYear) {
+        if (mutableTimeStamp>secondsInYear) {
             currentYearDelta += 1;
-        } else if ((timeStamp-secondsInMonth)>secondsInMonth) {
+            mutableTimeStamp -= secondsInYear;
+        } else if (mutableTimeStamp>secondsInMonth) {
             currentMonthDelta += 1;
-        } else if ((timeStamp-secondsInDay)>secondsInDay) {
+            mutableTimeStamp -= secondsInMonth;
+        } else if (mutableTimeStamp>secondsInDay) {
             currentDayDelta += 1;
+            mutableTimeStamp -= secondsInDay;
         } else {
             break;
         }
     }
 
-    const currentMonth: []const u8 = try getMonthString(startMonth+currentMonthDelta);
+    const currentMonth: []const u8 = @tagName(@as(std.time.epoch.Month,@enumFromInt(startMonth+currentMonthDelta)));
     const currentDay: u8 = startDay+currentDayDelta;
-    const currentYear: u16 = startDay+currentDayDelta;
+    const currentYear: u16 = startYear+currentYearDelta;
 
-    const formattedTime = try std.fmt.allocPrint(allocator, "{s} {d}, {d}", .{currentMonth, currentDay, currentYear});
+    const formattedTime = try std.fmt.allocPrint(allocator, "UTC {s} {d}, {d}", .{currentMonth, currentDay, currentYear});
 
     return formattedTime;
 }
@@ -187,12 +159,16 @@ pub fn logPassword(allocator: Allocator, password: []const u8) !void{
     const timeStampStr = try getCustomFormattedTime(allocator, timeStamp);
     defer allocator.free(timeStampStr);
 
-    std.debug.print("{d}\n", .{timeStampStr});
+    const fileData = try std.fs.cwd().readFileAlloc(allocator, "log.txt", 1048576);
+    defer allocator.free(fileData);
 
-    // TODO: change this to only append and not overwrite
-    // TODO: make a while loop that checks if file size will be too big, if so start deleting old lines to make space
-    //       (over around 1mb, this is a temporary backup log and should not be used as a password keeper)
-    try std.fs.cwd().writeFile("log.txt", password);
+    const logEntry = try std.fmt.allocPrint(allocator, "{s} - {s}\n{s}", .{timeStampStr, password, fileData});
+    defer allocator.free(logEntry);
+
+    if (logEntry.len > 1048576) {
+        try std.fs.cwd().deleteFile("log.txt");
+    }
+    try std.fs.cwd().writeFile("log.txt", logEntry);
 }
 
 pub fn main() !void {
@@ -207,7 +183,12 @@ pub fn main() !void {
 
     try logPassword(allocator, password);
     
-    // TODO: copy password to clipboard
+    // const HWND = win32.system.console.GetConsoleWindow();
+
+    // _ = win32.system.data_exchange.OpenClipboard(HWND);
+    // _ = win32.system.data_exchange.EmptyClipboard();
+    // _ = win32.system.data_exchange.SetClipboardData(1, );
+    // _ = win32.system.data_exchange.CloseClipboard();
 
     // debug
     std.debug.print("{s}\n", .{password});
