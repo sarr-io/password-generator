@@ -20,10 +20,6 @@ const SettingsError = error {
     AllOptionsDisabled
 };
 
-const TimeError = error {
-    InvalidMonthInt
-};
-
 const ClipboardError = error {
     ClipboardSetTextFailed,
     NewClipboardFailed,
@@ -120,13 +116,13 @@ pub fn generatePassword(allocator: Allocator, generatorSettings: std.json.Parsed
 pub fn getCustomFormattedTime(allocator: Allocator, timeStamp: i64) ![]const u8{
     var mutableTimeStamp: i64 = timeStamp;
 
-    const startYear: u16 = 1970;
+    const startYear: u16 = 1970; // epoch start year
     var currentYearDelta: u16 = 0;
 
-    const startDay: u8 = 1;
+    const startDay: u8 = 1; // epoch start day
     var currentDayDelta: u8 = 0;
 
-    const startMonth: u8 = 1;
+    const startMonth: u8 = 1; // epoch start month
     var currentMonthDelta: u8 = 0;
 
     while (true) {
@@ -237,7 +233,4 @@ pub fn main() !void {
     try logPassword(allocator, password);
 
     try copyToClipboard(password);
-    
-    // debug
-    std.debug.print("{s}\n", .{password});
 }
