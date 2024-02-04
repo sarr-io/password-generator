@@ -1,6 +1,8 @@
 # This is a very basic password generator.
 The program will simply generate a password and then close.
 
+[Download latest release](https://github.com/sarr-io/password-generator/releases/download/v1.0.0/passwordgen.exe)
+
 # Features
 - Very fast
 - settings.json (creates the file on first run)
