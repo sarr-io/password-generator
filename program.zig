@@ -1,7 +1,9 @@
 const std = @import("std");
 const fs = std.fs;
 
-const win32 = @import("zigwin32/win32.zig");
+const lcb = @cImport({
+    @cInclude("libclipboard.h");
+});
 
 const Allocator = std.mem.Allocator;
 
@@ -20,6 +22,12 @@ const SettingsError = error {
 
 const TimeError = error {
     InvalidMonthInt
+};
+
+const ClipboardError = error {
+    ClipboardSetTextFailed,
+    NewClipboardFailed,
+    TransferSizeTooLarge
 };
 
 pub fn createFile(path: []const u8) !bool {
@@ -79,6 +87,7 @@ pub fn generatePassword(allocator: Allocator, generatorSettings: std.json.Parsed
         generatorSettings.value.symbols == false) {
         return SettingsError.AllOptionsDisabled;
     }
+    
 
     var finalChars = std.ArrayList(u8).init(allocator);
     defer finalChars.deinit();
@@ -96,11 +105,15 @@ pub fn generatePassword(allocator: Allocator, generatorSettings: std.json.Parsed
         try finalChars.appendSlice(symbolChars);
     }
 
-    var password = try allocator.alloc(u8, length);
-
+    var password = try allocator.alloc(u8, length+1);
     for (0..length) |i|{
         password[i] = finalChars.items[std.crypto.random.intRangeAtMost(usize, 0, finalChars.items.len-1)];
     }
+
+    // add a blank character at the end
+    // this solves a weird null termination string length problem later on with lcb.clipboard_set_text_ex()
+    password[length] = ' ';
+    
     return password;
 }
 
@@ -171,6 +184,46 @@ pub fn logPassword(allocator: Allocator, password: []const u8) !void{
     try std.fs.cwd().writeFile("log.txt", logEntry);
 }
 
+pub fn copyToClipboard(text:  []const u8) !void {
+    // get length of password as multiple of 4 as lcb.clipboard_opts_x11.transfer_size requests
+    var transfer_size: u32 = @intCast(text.len);
+    const deltaSize: u32 = 4 - (transfer_size % 4);
+
+    // we divide the max int u32 (4_294_967_295) by 2 because in reality the length of lcb.clipboard_set_text_ex is a i32
+    if (text.len + deltaSize > (4_294_967_295/2)) { 
+        return ClipboardError.TransferSizeTooLarge;
+    }
+    transfer_size += deltaSize;
+
+    var opts = lcb.clipboard_opts {
+        .win32 = lcb.clipboard_opts_win32 {
+            .max_retries = 0, // uses default
+            .retry_delay = 0 // uses default
+        },
+        .x11 = lcb.clipboard_opts_x11 {
+            .action_timeout = 5, // 5ms
+            .transfer_size = transfer_size, // assuming this is size of data being passed to clipboard
+            .display_name = null // uses default
+        },
+        .user_calloc_fn = null, // uses default
+        .user_free_fn = null, // uses default
+        .user_malloc_fn = null, // uses default
+        .user_realloc_fn = null // uses default
+    };
+    const cb: ?*lcb.clipboard_c = lcb.clipboard_new(&opts);
+    defer lcb.clipboard_free(cb);
+
+    if (cb == null) {
+        return ClipboardError.NewClipboardFailed;
+    }
+    
+    // as mentioned in generatePassword() there is a null termination problem I couldn't figure out
+    // so adding a blank character and then removing 1 from text.len seemed to work without cutting off any characters
+    if (!lcb.clipboard_set_text_ex(cb, text.ptr, @intCast(text.len-1), lcb.LCB_CLIPBOARD)) {
+        return ClipboardError.ClipboardSetTextFailed;
+    }
+}
+
 pub fn main() !void {
     var gpa = std.heap.GeneralPurposeAllocator(.{}){};
     const allocator = gpa.allocator();
@@ -182,18 +235,9 @@ pub fn main() !void {
     defer allocator.free(password);
 
     try logPassword(allocator, password);
+
+    try copyToClipboard(password);
     
-    // const HWND = win32.system.console.GetConsoleWindow();
-
-    // _ = win32.system.data_exchange.OpenClipboard(HWND);
-    // _ = win32.system.data_exchange.EmptyClipboard();
-    // _ = win32.system.data_exchange.SetClipboardData(1, );
-    // _ = win32.system.data_exchange.CloseClipboard();
-
     // debug
     std.debug.print("{s}\n", .{password});
-}
-
-test "loadSettings" {
-    // figure out how to enter parameters into a test
 }
