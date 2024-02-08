@@ -10,9 +10,9 @@ The program will simply generate a password and then close.
 
 ### Configurable settings:
 1. Password length
-2. Uppercase chars
-3. Lowercase chars
-4. Number chars
-5. Symbol chars
+2. Uppercase chars (toggle)
+3. Lowercase chars (toggle)
+4. Number chars (toggle)
+5. Symbol chars (toggle)
    
 ### **Note: Please do not use the log.txt as permanent password storage, it will clear itself after it gets too large (~1mb). I also do not see a reason the log file should be any larger so it is not configurable in settings.txt.**
