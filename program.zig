@@ -8,7 +8,7 @@ const lcb = @cImport({
 const Allocator = std.mem.Allocator;
 
 const settings = struct { 
-    length: u8 = 10, 
+    length: usize = 10, 
     lowercase: ?bool = null, 
     uppercase: ?bool = null, 
     numbers: ?bool = null, 
@@ -71,7 +71,7 @@ pub fn generatePassword(allocator: Allocator, generatorSettings: std.json.Parsed
     const numberChars = "1234567890";
     const symbolChars = "~`!@#$%^&*()_-+={[]}|\\<>,.?/:;'\"";
 
-    const length: u8 = generatorSettings.value.length;
+    const length: usize = generatorSettings.value.length;
 
     if (length < 1) {
         return SettingsError.InvalidLength;
